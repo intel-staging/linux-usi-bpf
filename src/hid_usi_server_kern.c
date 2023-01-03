@@ -39,6 +39,8 @@ struct {
 } p_raw SEC(".maps");
 
 /* HID-BPF kfunc API definitions */
+extern u8 *hid_bpf_get_data(struct hid_bpf_ctx *ctx, unsigned int offset,
+			    const size_t __sz) __ksym;
 extern int hid_bpf_attach_prog(unsigned int hid_id, int prog_fd,
 			       u32 flags) __ksym;
 extern struct hid_bpf_ctx *hid_bpf_allocate_context(unsigned int hid_id) __ksym;
@@ -101,8 +103,46 @@ static void usi_send_event(struct hid_bpf_ctx *ctx, int event, int data)
 	bpf_ringbuf_submit(e, 0);
 }
 
-SEC("hid/device_event")
-int hid_raw_event(struct hid_bpf_ctx *ctx)
+static u32 _get_bits(u8 *buf, unsigned int offset, int n)
+{
+	unsigned int idx = offset / 8;
+	unsigned int bit_nr = 0;
+	unsigned int bit_shift = offset & 0x7;
+	int bits_to_copy = 8 - bit_shift;
+	u32 value = 0;
+	u32 mask = n < 32 ? (1U << n) - 1 : ~0U;
+
+	while (n > 0) {
+		value |= ((u32)buf[idx] >> bit_shift) << bit_nr;
+		n -= bits_to_copy;
+		bit_nr += bits_to_copy;
+		bits_to_copy = 8;
+		bit_shift = 0;
+		idx++;
+	}
+
+	return value & mask;
+}
+
+static void _set_bits(u8 *buf, unsigned int offset, int n, u32 value)
+{
+	unsigned int idx = offset / 8;
+	unsigned int bit_shift = offset & 0x7;
+	int bits_to_set = 8 - bit_shift;
+
+	while (n - bits_to_set >= 0) {
+		buf[idx] &= ~(0xff << bit_shift);
+		buf[idx] |= value << bit_shift;
+		value >>= bits_to_set;
+		n -= bits_to_set;
+		bits_to_set = 8;
+		bit_shift = 0;
+		idx++;
+	}
+}
+
+SEC("fmod_ret/hid_bpf_device_event")
+int BPF_PROG(hid_raw_event, struct hid_bpf_ctx *hctx)
 {
 	u32 i;
 	u32 tmp;
@@ -116,31 +156,38 @@ int hid_raw_event(struct hid_bpf_ctx *ctx)
 	u64 time;
 	u8 *buf;
 
-	buf = bpf_hid_get_data(ctx, 0, 1);
+	/*
+	 * Size 128 is hardcoded here, should have enough space to
+	 * contain any USI events
+	 */
+	buf = hid_bpf_get_data(hctx, 0, 128 /* hctx->allocated_size */);
 	if (!buf || buf[0] != inputs[USI_PEN_IN_RANGE].idx)
 		return 0;
 
-	if (bpf_hid_get_bits(ctx, inputs[USI_PEN_IN_RANGE].offset,
-			     inputs[USI_PEN_IN_RANGE].size, &in_range) <= 0)
-		return 0;
-
-	if (bpf_hid_get_bits(ctx, inputs[USI_PEN_TOUCHING].offset,
-			     inputs[USI_PEN_TOUCHING].size, &touching) <= 0)
-		return 0;
+	in_range = _get_bits(buf, inputs[USI_PEN_IN_RANGE].offset,
+			     inputs[USI_PEN_IN_RANGE].size);
+	touching = _get_bits(buf, inputs[USI_PEN_TOUCHING].offset,
+			     inputs[USI_PEN_TOUCHING].size);
 
 	if (quirks & BIT(USI_QUIRK_FORCE_QUERY))
 		touching = in_range;
 
 	if (touching != last_touching)
-		usi_send_event(ctx, USI_EVENT_IN_RANGE, touching);
+		usi_send_event(hctx, USI_EVENT_IN_RANGE, touching);
 
 	last_touching = touching;
 
 	if (!touching)
 		last_pen_event = 0;
 
+	if (!in_range)
+		return 0;
+
+	if (!touching)
+		return 0;
+
 	if (!in_range) {
-		ctx->size = 0;
+		hctx->size = 0;
 		return 0;
 	}
 
@@ -149,11 +196,13 @@ int hid_raw_event(struct hid_bpf_ctx *ctx)
 	if (!last_pen_event) {
 		last_pen_event = time;
 		if (quirks & BIT(USI_QUIRK_FORCE_QUERY)) {
-			usi_send_event(ctx, USI_EVENT_RUN_QUERY, USI_PEN_COLOR);
-			usi_send_event(ctx, USI_EVENT_RUN_QUERY,
+			usi_send_event(hctx, USI_EVENT_RUN_QUERY, USI_PEN_COLOR);
+			usi_send_event(hctx, USI_EVENT_RUN_QUERY,
 				       USI_PEN_LINE_WIDTH);
-			usi_send_event(ctx, USI_EVENT_RUN_QUERY,
+			usi_send_event(hctx, USI_EVENT_RUN_QUERY,
 				       USI_PEN_LINE_STYLE);
+			/* Filter out initial bogus events */
+			last_pen_event++;
 		}
 	}
 
@@ -162,10 +211,7 @@ int hid_raw_event(struct hid_bpf_ctx *ctx)
 		size = inputs[i].size;
 		bool changed = false;
 
-		val = 0;
-
-		if (bpf_hid_get_bits(ctx, offset, size, &val) <= 0)
-			continue;
+		val = _get_bits(buf, offset, size);
 
 		new_val = val;
 		if (i == USI_PEN_LINE_STYLE && (new_val == 0x77 || new_val == 255))
@@ -187,10 +233,10 @@ int hid_raw_event(struct hid_bpf_ctx *ctx)
 			*p = new_val;
 		}
 
-		if (changed && time < last_pen_event + MS_TO_NS(200) &&
-		    time > last_pen_event) {
+		if (changed && time < last_pen_event + MS_TO_NS(250) &&
+		    time >= last_pen_event) {
 			if (*c != new_val)
-				usi_send_event(ctx, USI_EVENT_VAL_CHANGED, i);
+				usi_send_event(hctx, USI_EVENT_VAL_CHANGED, i);
 			*c = new_val;
 		}
 
@@ -198,7 +244,7 @@ int hid_raw_event(struct hid_bpf_ctx *ctx)
 			new_val = *c;
 
 		if (new_val != val)
-			bpf_hid_set_bits(ctx, offset, size, new_val);
+			_set_bits(buf, offset, size, new_val);
 	}
 
 	return 0;
