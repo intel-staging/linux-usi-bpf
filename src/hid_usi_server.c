@@ -610,6 +610,28 @@ fail:
 	return -1;
 }
 
+static int attach_prog_to_hid(struct bpf_program *prog, int hid)
+{
+	int err;
+	struct attach_prog_args args = { 0 };
+	int attach_fd;
+	DECLARE_LIBBPF_OPTS(bpf_test_run_opts, tattr,
+			    .ctx_in = &args,
+			    .ctx_size_in = sizeof(args),
+	);
+
+	args.hid = hid;
+
+	attach_fd = bpf_program__fd(skel->progs.attach_prog);
+	args.prog_fd = bpf_program__fd(prog);
+
+	err = bpf_prog_test_run_opts(attach_fd, &tattr);
+	if (err)
+		fprintf(stderr, "Failed to attach prog to hid: %d\n", err);
+
+	return err;
+}
+
 static int attach_progs(void)
 {
 	int err = 0;
@@ -653,21 +675,19 @@ static int attach_progs(void)
 		goto cleanup;
 	}
 
-	skel->links.usi_user_request =
-		bpf_program__attach_hid(skel->progs.usi_user_request, sysfs_fd, 0);
-	if (!skel->links.usi_user_request) {
-		fprintf(stderr, "HID attach link failed for usi_user_request\n");
-		err = 1;
+	err = attach_prog_to_hid(skel->progs.usi_user_request, hid_id);
+	if (err) {
+		fprintf(stderr, "HID attach failed for usi_user_request: %d\n",
+			err);
 		goto cleanup;
 	}
 
 	hidraw_fd = bpf_program__fd(skel->progs.usi_user_request);
 
-	skel->links.hid_raw_event =
-		bpf_program__attach_hid(skel->progs.hid_raw_event, sysfs_fd, 0);
-	if (!skel->links.hid_raw_event) {
-		fprintf(stderr, "HID attach link failed for hid_raw_event\n");
-		err = 1;
+	err = attach_prog_to_hid(skel->progs.hid_raw_event, hid_id);
+	if (err) {
+		fprintf(stderr, "HID attach failed for hid_raw_event: %d\n",
+			err);
 		goto cleanup;
 	}
 

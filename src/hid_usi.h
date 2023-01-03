@@ -71,6 +71,20 @@ struct usi_args {
 	int retval;
 };
 
+/**
+ * struct attach_prog_args - arguments passed to HID eBPF attach progs call
+ * @prog_fd:	file descriptor for the program to attach
+ * @hid:	HID driver ID for the program to attach to
+ * @flags:	flags to pass to the HID core
+ * @retval:	return value from eBPF to server
+ */
+struct attach_prog_args {
+	int prog_fd;
+	unsigned int hid;
+	unsigned int flags;
+	int retval;
+};
+
 enum {
 	USI_EVENT_RUN_QUERY,
 	USI_EVENT_IN_RANGE,

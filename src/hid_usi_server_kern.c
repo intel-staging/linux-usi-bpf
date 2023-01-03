@@ -39,6 +39,8 @@ struct {
 } p_raw SEC(".maps");
 
 /* HID-BPF kfunc API definitions */
+extern int hid_bpf_attach_prog(unsigned int hid_id, int prog_fd,
+			       u32 flags) __ksym;
 extern struct hid_bpf_ctx *hid_bpf_allocate_context(unsigned int hid_id) __ksym;
 extern void hid_bpf_release_context(struct hid_bpf_ctx *ctx) __ksym;
 extern int hid_bpf_hw_request(struct hid_bpf_ctx *ctx, __u8 *data,
@@ -57,6 +59,14 @@ const volatile struct hid_config_data inputs[USI_NUM_PARAMS];
 
 static u64 last_pen_event;
 static int last_touching;
+
+SEC("syscall")
+int attach_prog(struct attach_prog_args *args)
+{
+	args->retval = hid_bpf_attach_prog(args->hid, args->prog_fd,
+					   args->flags);
+	return 0;
+}
 
 SEC("syscall")
 int usi_user_request(struct usi_args *args)
