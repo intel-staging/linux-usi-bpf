@@ -65,6 +65,18 @@ static bool debug;
 static unsigned vendor;
 static unsigned product;
 
+#define HID_USAGE_PAGE		0xffff0000
+
+#define HID_UP_MSVENDOR		0xff000000
+#define HID_UP_DIGITIZER	0x000d0000
+
+#define HID_DG_PEN				0x000d0002
+#define HID_DG_INRANGE				0x000d0032
+#define HID_DG_TIPSWITCH			0x000d0042
+#define HID_DG_PEN_COLOR			0x000d005c
+#define HID_DG_PEN_LINE_WIDTH			0x000d005e
+#define HID_DG_PEN_LINE_STYLE_INK		0x000d0072
+
 static const char *server_introspection_xml =
 	DBUS_INTROSPECT_1_0_XML_DOCTYPE_DECL_NODE
 	"<node>\n"

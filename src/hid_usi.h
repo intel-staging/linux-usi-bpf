@@ -6,12 +6,11 @@
 #ifndef HID_USI_H_
 #define HID_USI_H_
 
-#include <linux/bits.h>
-
-#ifdef __clang__
 typedef uint64_t u64;
 typedef uint32_t u32;
-#endif
+typedef uint8_t u8;
+
+#define BIT(nr)		(1 << (nr))
 
 #define VERSION_MAJOR	0
 #define VERSION_MINOR	7

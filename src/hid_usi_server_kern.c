@@ -251,4 +251,3 @@ int BPF_PROG(hid_raw_event, struct hid_bpf_ctx *hctx)
 }
 
 char _license[] SEC("license") = "GPL";
-u32 _version SEC("version") = LINUX_VERSION_CODE;

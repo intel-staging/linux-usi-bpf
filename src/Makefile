@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Copyright (C) 2022 Intel Corporation
+
 BPFOBJS = hid_usi_server_kern.o
 UOBJS = hid_usi_server.o hid_usi_client.o hid_parser.o
 PROGS = hid_usi_server hid_usi_client
@@ -13,7 +17,7 @@ KERNEL_OBJ ?= $(KERNEL_SRC)
 CLANG ?= clang
 BPF_INC_FLAGS =
 BPF_EXTRA_CFLAGS ?= -O2 -g -target bpf
-CFLAGS = -Wall -O2 -Wmissing-prototypes -Wstrict-prototypes $(EXTRA_CFLAGS)
+CFLAGS = -Wall -O2 -Wmissing-prototypes -Wstrict-prototypes -no-pie $(EXTRA_CFLAGS) $(shell pkg-config --cflags dbus-glib-1) $(shell pkg-config --cflags glib-2.0)
 LDFLAGS_DBUS = $(shell pkg-config --libs dbus-glib-1)
 LDFLAGS_GIO = $(shell pkg-config --libs gio-2.0)
 BPFTOOL = $(KERNEL_OBJ)/bpftool
@@ -32,21 +36,9 @@ LDLIBS = $(KERNEL_OBJ)/libbpf/libbpf.a \
 hid_usi_server_libs = $(LDFLAGS_DBUS) $(LDFLAGS_GIO)
 hid_usi_client_libs = $(LDFLAGS_DBUS) $(LDFLAGS_GIO)
 
-BPF_INC = -I$(KERNEL_SRC)/arch/x86/include \
-	  -I$(KERNEL_OBJ)/arch/x86/include/generated \
-	  -I$(KERNEL_SRC)/include \
-	  -I$(KERNEL_OBJ)/include \
-	  -I$(KERNEL_SRC)/arch/x86/include/uapi \
-	  -I$(KERNEL_OBJ)/arch/x86/include/generated/uapi \
-	  -I$(KERNEL_SRC)/include/uapi \
-	  -I$(KERNEL_OBJ)/include/generated/uapi \
-	  -I$(KERNEL_SRC)/tools/testing/selftests \
-	  -I$(KERNEL_SRC)/samples/bpf/libbpf/include \
-	  -I$(KERNEL_SRC)/tools/lib \
-	  -I$(KERNEL_OBJ)/samples/bpf \
-	  -I$(KERNEL_OBJ)/libbpf/ \
-	  -include $(KERNEL_SRC)/include/linux/kconfig.h \
-	  -include $(KERNEL_SRC)/samples/bpf/asm_goto_workaround.h
+BPF_INC = -I$(KERNEL_SRC)/include \
+	  -I$(KERNEL_OBJ) \
+	  -I$(KERNEL_OBJ)/libbpf/include
 
 U_INC = -I$(KERNEL_OBJ)/usr/include \
 	-I$(KERNEL_SRC)/tools/include \
