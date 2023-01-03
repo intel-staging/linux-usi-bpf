@@ -98,6 +98,8 @@ static const char *server_introspection_xml =
 	"  </interface>\n"
 	"</node>\n";
 
+static int usi_property_changed(u32 idx);
+
 static int usi_ioctl(int fd, char *buf, int reqtype)
 {
 	int ret;
@@ -212,6 +214,8 @@ static int write_value(const char *param, int value)
 	}
 
 	usi_set_feature(idx, value);
+
+	usi_property_changed(idx);
 
 	return 0;
 }
