@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright(c) 2022 Intel Corporation. */
 
-#include <linux/version.h>
-#include <uapi/linux/bpf.h>
-#include <uapi/linux/hid.h>
-#include <uapi/linux/bpf_hid.h>
+#include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_tracing.h>
 
 #include "hid_usi.h"
 
@@ -40,6 +38,13 @@ struct {
 	__uint(max_entries, USI_NUM_PARAMS);
 } p_raw SEC(".maps");
 
+/* HID-BPF kfunc API definitions */
+extern struct hid_bpf_ctx *hid_bpf_allocate_context(unsigned int hid_id) __ksym;
+extern void hid_bpf_release_context(struct hid_bpf_ctx *ctx) __ksym;
+extern int hid_bpf_hw_request(struct hid_bpf_ctx *ctx, __u8 *data,
+			      size_t len, enum hid_report_type type,
+			      enum hid_class_request reqtype) __ksym;
+
 /*
  * These are used as configuration variables passed in by the server.
  * volatile modifier is needed, as otherwise the compiler assumes these
@@ -53,20 +58,21 @@ const volatile struct hid_config_data inputs[USI_NUM_PARAMS];
 static u64 last_pen_event;
 static int last_touching;
 
-SEC("hid/user_event")
-int usi_user_request(struct hid_bpf_ctx *ctx)
+SEC("syscall")
+int usi_user_request(struct usi_args *args)
 {
+	struct hid_bpf_ctx *ctx;
 	int ret;
-	u8 *buf;
 
-	buf = bpf_hid_get_data(ctx, 0, 4);
-	if (!buf)
+	ctx = hid_bpf_allocate_context(args->hid_id);
+	if (!ctx)
 		return 0;
 
-	ret = bpf_hid_raw_request(ctx, &buf[1], 3, HID_FEATURE_REPORT,
-				  buf[0]);
-	ctx->retval = ret;
-	ctx->size = 0;
+	ret = hid_bpf_hw_request(ctx, args->data, 4, HID_FEATURE_REPORT,
+				 args->request_type);
+	args->retval = ret;
+
+	hid_bpf_release_context(ctx);
 
 	return 0;
 }

@@ -40,6 +40,7 @@ static char *version = ver_buf;
 static GMainLoop *mainloop;
 static DBusConnection *dbus_conn;
 
+static int hid_id;
 static int sysfs_fd;
 static int hidraw_fd;
 static int cache;
@@ -97,19 +98,19 @@ static const char *server_introspection_xml =
 	"  </interface>\n"
 	"</node>\n";
 
-static int usi_ioctl(int fd, char *buf)
+static int usi_ioctl(int fd, char *buf, int reqtype)
 {
 	int ret;
 	static GMutex ioctl_mutex;
+	struct usi_args args = { 0 };
 	LIBBPF_OPTS(bpf_test_run_opts, run_attrs,
-			.repeat = 1,
-			.ctx_in = &sysfs_fd,
-			.ctx_size_in = sizeof(sysfs_fd),
-			.data_in = buf,
-			.data_size_in = 4,
-			.data_out = buf,
-			.data_size_out = 4,
+			.ctx_in = &args,
+			.ctx_size_in = sizeof(args),
 	);
+
+	memcpy(&args.data, buf, sizeof(args.data));
+	args.request_type = reqtype;
+	args.hid_id = hid_id;
 
 	g_mutex_lock(&ioctl_mutex);
 
@@ -127,24 +128,24 @@ static int usi_query_feature(int fea)
 {
 	char buf[4];
 
-	buf[0] = HID_REQ_GET_REPORT;
-	buf[1] = features[fea].idx;
-	buf[2] = 1;
+	buf[0] = features[fea].idx;
+	buf[1] = 1;
+	buf[2] = 0;
 	buf[3] = 0;
 
-	return usi_ioctl(hidraw_fd, buf);
+	return usi_ioctl(hidraw_fd, buf, HID_REQ_GET_REPORT);
 }
 
 static int usi_set_feature(int fea, int val)
 {
 	char buf[4];
 
-	buf[0] = HID_REQ_SET_REPORT;
-	buf[1] = features[fea].idx;
-	buf[2] = 1;
-	buf[3] = val;
+	buf[0] = features[fea].idx;
+	buf[1] = 1;
+	buf[2] = val;
+	buf[3] = 0;
 
-	return usi_ioctl(hidraw_fd, buf);
+	return usi_ioctl(hidraw_fd, buf, HID_REQ_SET_REPORT);
 }
 
 static void int_exit(int sig)
@@ -873,6 +874,8 @@ int main(int argc, char **argv)
 
 		c++;
 	}
+
+	hid_id = 1;
 
 	printf("vendor: %x\n", vendor);
 	printf("product: %x\n", product);
