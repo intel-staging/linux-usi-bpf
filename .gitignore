@@ -1,0 +1,4 @@
+src/hid_usi_client
+src/hid_usi_server
+src/hid_usi_server_kern.h
+*.o
