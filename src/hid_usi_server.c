@@ -142,6 +142,9 @@ static int usi_query_feature(int fea)
 {
 	char buf[4];
 
+	if (fea >= USI_NUM_PARAMS)
+		return -EINVAL;
+
 	buf[0] = features[fea].idx;
 	buf[1] = 1;
 	buf[2] = 0;
@@ -451,6 +454,9 @@ static int usi_property_changed(u32 idx)
 	DBusMessageIter iter, array, dict, variant;
 	const char *ifname = "org.universalstylus.PenInterface";
 	int retval = 0;
+
+	if (!prop_name)
+		return -1;
 
 	signal = dbus_message_new_signal("/org/universalstylus/Pen",
 					 "org.freedesktop.DBus.Properties",
